@@ -1,62 +1,81 @@
-name: Reusable - Build
-
-on:
-  workflow_call:
-
 jobs:
   build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        java: [ 8, 11, 17, 21 ]
-        testGroup: [ 1, 2, 3, 4 ]
-        testShaded: [ true, false ]
-        glowrootHarness: [ javaagent, local ]
-      fail-fast: false
     env:
-      TEST_SHADED: ${{ matrix.testShaded }}
       GLOWROOT_HARNESS: ${{ matrix.glowrootHarness }}
+      TEST_SHADED: ${{ matrix.testShaded }}
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      if: ${{ matrix.java != 8 }}
+      name: Set up JDK ${{ matrix.java }} for tests
+      uses: actions/setup-java@v4
+      with:
+        distribution: adopt
+        java-version: ${{ matrix.java }}
+    - continue-on-error: true
+      if: ${{ matrix.java != 8 }}
+      name: Set up env var for java home for tests
+      run: 'test_jvm_path_matches=(/opt/hostedtoolcache/Java_Adopt_jdk/${{ matrix.java
+        }}.*/x64/bin/java)
 
-      - name: Set up JDK ${{ matrix.java }} for tests
-        if: ${{ matrix.java != 8 }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: adopt
-          java-version: ${{ matrix.java }}
+        echo "TEST_JVM_PATH=${test_jvm_path_matches[0]}" >> $GITHUB_ENV
 
-      - name: Set up env var for java home for tests
-        if: ${{ matrix.java != 8 }}
-        run: |
-          test_jvm_path_matches=(/opt/hostedtoolcache/Java_Adopt_jdk/${{ matrix.java }}.*/x64/bin/java)
-          echo "TEST_JVM_PATH=${test_jvm_path_matches[0]}" >> $GITHUB_ENV
-          cat $GITHUB_ENV
+        cat $GITHUB_ENV
 
-      - name: Set up JDK 11 for build
-        uses: actions/setup-java@v4
-        with:
-          distribution: adopt
-          java-version: 11
+        '
+    - continue-on-error: true
+      name: Set up JDK 11 for build
+      uses: actions/setup-java@v4
+      with:
+        distribution: adopt
+        java-version: 11
+    - continue-on-error: true
+      name: Restore cache
+      uses: actions/cache@v4
+      with:
+        key: build-test${{ matrix.testGroup }}-${{ hashFiles('**/pom.xml') }}
+        path: '~/.m2/repository
 
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.m2/repository
-            ~/.cache/bower
-          key: build-test${{ matrix.testGroup }}-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            build-
+          ~/.cache/bower
 
-      - name: Build
-        shell: bash
-        run: xvfb-run .github/scripts/build.sh test${{ matrix.testGroup }}
-        if: runner.os == 'Linux'
+          '
+        restore-keys: 'build-
 
-      - name: Upload webdriver screenshots
-        if: failure()
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          path: /tmp/glowroot-webdriver-test-*.png
-          if-no-files-found: ignore
+          '
+    - continue-on-error: true
+      if: runner.os == 'Linux'
+      name: Build
+      run: xvfb-run .github/scripts/build.sh test${{ matrix.testGroup }}
+      shell: bash
+    - continue-on-error: true
+      if: failure()
+      name: Upload webdriver screenshots
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        if-no-files-found: ignore
+        path: /tmp/glowroot-webdriver-test-*.png
+    strategy:
+      fail-fast: false
+      matrix:
+        glowrootHarness:
+        - javaagent
+        - local
+        java:
+        - 8
+        - 11
+        - 17
+        - 21
+        testGroup:
+        - 1
+        - 2
+        - 3
+        - 4
+        testShaded:
+        - true
+        - false
+name: Reusable - Build
+on:
+  repository_dispatch:
+    types: trigger-ga___reusable-build.yml
